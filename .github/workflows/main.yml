@@ -1,9 +1,9 @@
-name: Android on macOS
+name: Android on macOS (Intel)
 on: workflow_dispatch
 
 jobs:
   run-android:
-    runs-on: macos-latest
+    runs-on: macos-13  # 👈 التغيير هنا: نستخدم نسخة Intel لدعم تسريع x86
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -20,8 +20,7 @@ jobs:
 
       - name: Download Android
         run: |
-          # تحميل Android 9.0 (الرابط المصحح من SourceForge)
-          # نستخدم علامات التنصيص لضمان قراءة الرابط بشكل صحيح
+          # تحميل Android 9.0 (الرابط المباشر)
           wget -O android.iso "https://downloads.sourceforge.net/project/android-x86/Release%209.0/android-x86_64-9.0-r2.iso"
 
       - name: Start Tunnel & Android
@@ -36,7 +35,7 @@ jobs:
           curl -s http://localhost:4040/api/tunnels | python3 -c "import sys, json; print(json.load(sys.stdin)['tunnels'][0]['public_url'].replace('tcp://', ''))"
           echo "=========================================="
           
-          # تشغيل الأندرويد (مع تسريع HVF الخاص بالماك)
+          # تشغيل الأندرويد (مع تسريع HVF المتوافق مع Intel)
           sudo qemu-system-x86_64 \
             -m 6096 \
             -smp 4 \
