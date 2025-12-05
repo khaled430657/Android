@@ -1,53 +1,42 @@
-name: Android on macOS (Fast)
+name: Real macOS Desktop
 on: workflow_dispatch
 
 jobs:
-  run-android:
-    runs-on: macos-13
-    env:
-      # هذا السطر يمنع التحديث الإجباري ويسرع التثبيت جداً
-      HOMEBREW_NO_AUTO_UPDATE: 1
-      HOMEBREW_NO_INSTALL_CLEANUP: 1
+  run-mac:
+    runs-on: macos-13 # نستخدم Intel لضمان توافق VNC الأفضل
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Install QEMU & Ngrok (Fast Mode)
+      - name: Setup Ngrok & VNC
         run: |
-          # نثبت مباشرة بدون تحديث القائمة
-          brew install qemu wget
-          
-          # تثبيت Ngrok
+          # 1. تثبيت Ngrok
+          brew install wget
           wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-amd64.zip
           unzip -o ngrok-v3-stable-darwin-amd64.zip
           
-          # تفعيل التوكن
+          # 2. تفعيل التوكن الخاص بك (تم إضافته)
           ./ngrok config add-authtoken 34jXK13BZ5o7SH6Yu3NCwhQg8L4_5z9UjyKk1FzjWAXA2CmGF
 
-      - name: Download Android
-        run: |
-          # تحميل Android 9.0
-          wget -O android.iso "https://downloads.sourceforge.net/project/android-x86/Release%209.0/android-x86_64-9.0-r2.iso"
+          # 3. إعداد كلمة مرور VNC (كلمة السر هي: 123456)
+          # يمكنك تغييرها من هنا
+          echo "secret" | sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvnclegacy -vnclegacy yes 
+          echo "secret" | sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw 123456
+          
+          # 4. تفعيل خدمة مشاركة الشاشة (Screen Sharing)
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users admin -privs -all -restart -agent -menu
 
-      - name: Start Tunnel & Android
+      - name: Start Tunnel
         run: |
-          # تشغيل Ngrok
+          # تشغيل Ngrok للمنفذ 5900 (منفذ VNC الافتراضي للماك)
           ./ngrok tcp 5900 > /dev/null &
           sleep 5
           
-          # طباعة الرابط
           echo "=========================================="
-          echo "🚀 رابط الاتصال الصاروخي:"
+          echo "🍎 رابط جهاز الماك الخاص بك:"
           curl -s http://localhost:4040/api/tunnels | python3 -c "import sys, json; print(json.load(sys.stdin)['tunnels'][0]['public_url'].replace('tcp://', ''))"
+          echo "🔑 كلمة المرور هي: 123456"
           echo "=========================================="
           
-          # تشغيل الأندرويد (تسريع إنتل)
-          sudo qemu-system-x86_64 \
-            -m 6096 \
-            -smp 4 \
-            -cdrom android.iso \
-            -net nic -net user \
-            -vnc :0 \
-            -boot d \
-            -accel hvf \
-            -cpu host
+          # إبقاء السيرفر يعمل لمدة 6 ساعات (أو حتى ينتهي الرصيد)
+          sleep 21600
