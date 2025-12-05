@@ -20,8 +20,9 @@ jobs:
 
       - name: Download Android
         run: |
-          # تحميل نسخة خفيفة وسريعة
-          wget -O android.iso https://mirrors.gigenet.com/osdn/android-x86/69704/android-x86-8.1-r6.iso
+          # تحميل Android 9.0 (الرابط المصحح من SourceForge)
+          # نستخدم علامات التنصيص لضمان قراءة الرابط بشكل صحيح
+          wget -O android.iso "https://downloads.sourceforge.net/project/android-x86/Release%209.0/android-x86_64-9.0-r2.iso"
 
       - name: Start Tunnel & Android
         run: |
@@ -29,9 +30,9 @@ jobs:
           ./ngrok tcp 5900 > /dev/null &
           sleep 5
           
-          # طباعة الرابط للمستخدم
+          # طباعة الرابط للمستخدم بوضوح
           echo "=========================================="
-          echo "🔴 رابط الاتصال بـ VNC:"
+          echo "🔴 رابط الاتصال بـ VNC (انسخ هذا):"
           curl -s http://localhost:4040/api/tunnels | python3 -c "import sys, json; print(json.load(sys.stdin)['tunnels'][0]['public_url'].replace('tcp://', ''))"
           echo "=========================================="
           
