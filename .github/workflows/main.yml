@@ -1,0 +1,47 @@
+name: Android on macOS
+on: workflow_dispatch
+
+jobs:
+  run-android:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install QEMU & Ngrok
+        run: |
+          brew update
+          brew install qemu wget
+          # تثبيت Ngrok
+          wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-amd64.zip
+          unzip ngrok-v3-stable-darwin-amd64.zip
+          # تفعيل التوكن الخاص بك
+          ./ngrok config add-authtoken 34jXK13BZ5o7SH6Yu3NCwhQg8L4_5z9UjyKk1FzjWAXA2CmGF
+
+      - name: Download Android
+        run: |
+          # تحميل نسخة خفيفة وسريعة
+          wget -O android.iso https://mirrors.gigenet.com/osdn/android-x86/69704/android-x86-8.1-r6.iso
+
+      - name: Start Tunnel & Android
+        run: |
+          # تشغيل Ngrok في الخلفية
+          ./ngrok tcp 5900 > /dev/null &
+          sleep 5
+          
+          # طباعة الرابط للمستخدم
+          echo "=========================================="
+          echo "🔴 رابط الاتصال بـ VNC:"
+          curl -s http://localhost:4040/api/tunnels | python3 -c "import sys, json; print(json.load(sys.stdin)['tunnels'][0]['public_url'].replace('tcp://', ''))"
+          echo "=========================================="
+          
+          # تشغيل الأندرويد (مع تسريع HVF الخاص بالماك)
+          sudo qemu-system-x86_64 \
+            -m 6096 \
+            -smp 4 \
+            -cdrom android.iso \
+            -net nic -net user \
+            -vnc :0 \
+            -boot d \
+            -accel hvf \
+            -cpu host
