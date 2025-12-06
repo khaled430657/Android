@@ -1,7 +1,7 @@
-name: Android Emulator with Ngrok TCP
+name: Android Emulator Final
 
 on: 
-  workflow_dispatch: # يسمح لك بتشغيل السكربت يدوياً من لسان Actions
+  workflow_dispatch: # تشغيل يدوي
 
 jobs:
   run-emulator:
@@ -25,7 +25,7 @@ jobs:
           sudo apt update && sudo apt install ngrok
 
       # 4. تشغيل المحاكي وفتح النفق
-      - name: Run Android Emulator & Start Tunnel
+      - name: Run Android Emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 29
@@ -35,40 +35,26 @@ jobs:
           ram-size: 2048M
           disk-size: 4096M
           script: |
-            echo "--- 1. Authenticating Ngrok ---"
-            # يتم جلب التوكن من الأسرار. إذا فشل هذا، تأكد من إضافة Secret
+            # 1. تفعيل التوكن (تأكد من وجوده في Secrets)
             ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
             
-            echo "--- 2. Starting Ngrok TCP Tunnel ---"
-            # تشغيل النفق وتوجيه السجلات لملف خارجي للفحص
+            # 2. تشغيل النفق في الخلفية وحفظ السجل
+            echo "Starting Ngrok..."
             ngrok tcp 5555 --log=stdout > ngrok.log &
             
-            echo "Waiting 5 seconds for tunnel to establish..."
-            sleep 5
+            # 3. انتظار 10 ثواني لضمان الاتصال
+            sleep 10
             
-            echo "--- 3. Debugging Logs (Check here if it fails) ---"
-            # طباعة السجلات لرؤية أي رسائل خطأ من Ngrok
-            cat ngrok.log
-            echo "--------------------------------------------------"
+            # 4. استخراج الرابط وطباعته بوضوح
+            echo "========================================================"
+            echo "✅ CONNECTION ESTABLISHED!"
+            echo "Copy the address below (remove 'tcp://'):"
+            echo ""
+            grep -o "tcp://.*" ngrok.log
+            echo ""
+            echo "Example command: adb connect 0.tcp.ngrok.io:12345"
+            echo "========================================================"
             
-            echo "--- 4. Extracting Public URL ---"
-            PUBLIC_URL=$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
-            
-            if [ "$PUBLIC_URL" == "null" ] || [ -z "$PUBLIC_URL" ]; then
-              echo "❌ ERROR: Could not fetch Ngrok URL."
-              echo "Please check the logs above. Likely causes:"
-              echo "1. Invalid Token."
-              echo "2. Unverified Account (Credit Card/Phone needed for TCP)."
-            else
-              echo "✅ CONNECTION SUCCESSFUL!"
-              echo "========================================================"
-              echo "Run this command on your PC to connect:"
-              echo ""
-              echo "adb connect $(echo $PUBLIC_URL | sed 's/tcp:\/\///')"
-              echo ""
-              echo "========================================================"
-            fi
-            
-            # إبقاء الجلسة مفتوحة لمدة 20 دقيقة
-            echo "Keeping session alive for 20 minutes..."
+            # 5. إبقاء الجلسة مفتوحة لمدة 20 دقيقة
+            echo "Session active. Connect now..."
             sleep 1200
