@@ -1,42 +1,52 @@
-name: Real macOS Desktop
-on: workflow_dispatch
+name: Android CI
+
+on: [push]
 
 jobs:
-  run-mac:
-    runs-on: macos-13 # نستخدم Intel لضمان توافق VNC الأفضل
+  test:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Setup Ngrok & VNC
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 1. تثبيت Ngrok
+      - name: Install Ngrok
         run: |
-          # 1. تثبيت Ngrok
-          brew install wget
-          wget https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-amd64.zip
-          unzip -o ngrok-v3-stable-darwin-amd64.zip
-          
-          # 2. تفعيل التوكن الخاص بك (تم إضافته)
-          ./ngrok config add-authtoken 34jXK13BZ5o7SH6Yu3NCwhQg8L4_5z9UjyKk1FzjWAXA2CmGF
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update && sudo apt install ngrok
 
-          # 3. إعداد كلمة مرور VNC (كلمة السر هي: 123456)
-          # يمكنك تغييرها من هنا
-          echo "secret" | sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvnclegacy -vnclegacy yes 
-          echo "secret" | sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -clientopts -setvncpw -vncpw 123456
-          
-          # 4. تفعيل خدمة مشاركة الشاشة (Screen Sharing)
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users admin -privs -all -restart -agent -menu
-
-      - name: Start Tunnel
-        run: |
-          # تشغيل Ngrok للمنفذ 5900 (منفذ VNC الافتراضي للماك)
-          ./ngrok tcp 5900 > /dev/null &
-          sleep 5
-          
-          echo "=========================================="
-          echo "🍎 رابط جهاز الماك الخاص بك:"
-          curl -s http://localhost:4040/api/tunnels | python3 -c "import sys, json; print(json.load(sys.stdin)['tunnels'][0]['public_url'].replace('tcp://', ''))"
-          echo "🔑 كلمة المرور هي: 123456"
-          echo "=========================================="
-          
-          # إبقاء السيرفر يعمل لمدة 6 ساعات (أو حتى ينتهي الرصيد)
-          sleep 21600
+      - name: Run Android Emulator with Ngrok
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          target: default
+          arch: x86_64
+          profile: Nexus 6
+          # 2. هنا نضع أوامر Ngrok داخل نفس بيئة المحاكي
+          script: |
+            echo "Setting up Ngrok..."
+            # استخدم Secrets بدلاً من وضع التوكن مباشرة
+            ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+            
+            # تشغيل النفق لمنفذ 5555 (ADB) في الخلفية
+            ngrok tcp 5555 --log=stdout > ngrok.log &
+            
+            echo "Waiting for Ngrok tunnel..."
+            sleep 5
+            
+            # طباعة رابط الاتصال (ستجده في Logs الخطوة)
+            echo "=========================================="
+            echo "YOUR NGROK URL IS:"
+            curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url'
+            echo "=========================================="
+            
+            echo "Android Emulator started successfully!"
+            
+            # إبقاء الجلسة مفتوحة لمدة معينة (مثلاً 10 دقائق) لتتمكن من الاتصال
+            sleep 600 
