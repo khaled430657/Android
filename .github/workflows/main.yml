@@ -1,60 +1,84 @@
-name: Android Emulator Final
+name: Android VNC Stream
 
 on: 
-  workflow_dispatch: # تشغيل يدوي
+  workflow_dispatch:
 
 jobs:
-  run-emulator:
+  vnc-android:
     runs-on: ubuntu-latest
     steps:
       # 1. تجهيز الكود
       - uses: actions/checkout@v4
 
-      # 2. تجهيز الجافا
+      # 2. تثبيت واجهة سطح المكتب وسيرفر VNC (تستغرق دقيقة)
+      - name: Install Desktop & VNC
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xfce4 xfce4-goodies tightvncserver expect
+
+      # 3. تثبيت Java
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      # 3. تثبيت Ngrok
+      # 4. تثبيت أدوات Android SDK يدوياً (لأننا نحتاج تحكماً كاملاً)
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # 5. تثبيت صورة المحاكي وإنشاء جهاز
+      - name: Install Emulator & Create AVD
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-29" "emulator" "system-images;android-29;default;x86_64"
+          echo "no" | avdmanager create avd -n test -k "system-images;android-29;default;x86_64" --force
+
+      # 6. تثبيت Ngrok
       - name: Install Ngrok
         run: |
           curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
           echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
           sudo apt update && sudo apt install ngrok
 
-      # 4. تشغيل المحاكي وفتح النفق
-      - name: Run Android Emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 29
-          target: default
-          arch: x86_64
-          profile: Nexus 6
-          ram-size: 2048M
-          disk-size: 4096M
-          script: |
-            # 1. تفعيل التوكن (تأكد من وجوده في Secrets)
-            ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
-            
-            # 2. تشغيل النفق في الخلفية وحفظ السجل
-            echo "Starting Ngrok..."
-            ngrok tcp 5555 --log=stdout > ngrok.log &
-            
-            # 3. انتظار 10 ثواني لضمان الاتصال
-            sleep 10
-            
-            # 4. استخراج الرابط وطباعته بوضوح
-            echo "========================================================"
-            echo "✅ CONNECTION ESTABLISHED!"
-            echo "Copy the address below (remove 'tcp://'):"
-            echo ""
-            grep -o "tcp://.*" ngrok.log
-            echo ""
-            echo "Example command: adb connect 0.tcp.ngrok.io:12345"
-            echo "========================================================"
-            
-            # 5. إبقاء الجلسة مفتوحة لمدة 20 دقيقة
-            echo "Session active. Connect now..."
-            sleep 1200
+      # 7. تشغيل كل شيء (VNC + Emulator + Ngrok)
+      - name: Start System
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+        run: |
+          echo "--- 1. Setting VNC Password to '123456' ---"
+          mkdir -p ~/.vnc
+          # إعداد كلمة المرور تلقائياً
+          echo "123456" | vncpasswd -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
+
+          echo "--- 2. Starting VNC Server on Display :1 ---"
+          # تشغيل سيرفر الشاشة بأبعاد مناسبة للموبايل
+          USER=runner vncserver :1 -geometry 1080x1920 -depth 24
+          export DISPLAY=:1
+          
+          echo "--- 3. Starting Desktop Environment ---"
+          startxfce4 &
+          sleep 5
+
+          echo "--- 4. Starting Android Emulator ---"
+          # تشغيل المحاكي داخل شاشة VNC
+          $ANDROID_HOME/emulator/emulator -avd test -no-audio -no-boot-anim -gpu swiftshader_indirect &
+
+          echo "--- 5. Starting Ngrok Tunnel for VNC (Port 5901) ---"
+          ngrok config add-authtoken $NGROK_AUTH_TOKEN
+          # المنفذ 5901 هو المنفذ الخاص بالشاشة رقم 1
+          ngrok tcp 5901 --log=stdout > ngrok.log &
+          
+          sleep 10
+          
+          echo "========================================================"
+          echo "✅ READY TO CONNECT!"
+          echo "1. Open VNC Viewer App."
+          echo "2. Use this Address:"
+          grep -o "tcp://.*" ngrok.log | sed 's/tcp:\/\///'
+          echo "3. Password: 123456"
+          echo "========================================================"
+          
+          # إبقاء الجلسة مفتوحة
+          sleep 1800
