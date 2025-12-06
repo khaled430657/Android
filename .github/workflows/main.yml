@@ -1,36 +1,74 @@
+name: Android Emulator with Ngrok TCP
+
+on: 
+  workflow_dispatch: # يسمح لك بتشغيل السكربت يدوياً من لسان Actions
+
+jobs:
+  run-emulator:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. تجهيز الكود
+      - uses: actions/checkout@v4
+
+      # 2. تجهيز الجافا
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 3. تثبيت Ngrok
+      - name: Install Ngrok
+        run: |
+          curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+          echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+          sudo apt update && sudo apt install ngrok
+
+      # 4. تشغيل المحاكي وفتح النفق
+      - name: Run Android Emulator & Start Tunnel
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          target: default
+          arch: x86_64
+          profile: Nexus 6
+          ram-size: 2048M
+          disk-size: 4096M
           script: |
-            echo "Setting up Ngrok..."
-            # تأكد من وضع التوكن الصحيح هنا أو عبر Secrets
+            echo "--- 1. Authenticating Ngrok ---"
+            # يتم جلب التوكن من الأسرار. إذا فشل هذا، تأكد من إضافة Secret
             ngrok config add-authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
             
-            # محاولة تشغيل النفق وحفظ السجل
-            echo "Starting Ngrok TCP tunnel..."
+            echo "--- 2. Starting Ngrok TCP Tunnel ---"
+            # تشغيل النفق وتوجيه السجلات لملف خارجي للفحص
             ngrok tcp 5555 --log=stdout > ngrok.log &
             
-            # الانتظار قليلاً ليعمل Ngrok
+            echo "Waiting 5 seconds for tunnel to establish..."
             sleep 5
             
-            # ---------------------------------------------------
-            # خطوة التشخيص: طباعة محتوى السجل لمعرفة سبب الخطأ
-            # ---------------------------------------------------
-            echo ">>> NGROK LOGS (Check for errors below):"
+            echo "--- 3. Debugging Logs (Check here if it fails) ---"
+            # طباعة السجلات لرؤية أي رسائل خطأ من Ngrok
             cat ngrok.log
-            echo ">>> END OF LOGS"
+            echo "--------------------------------------------------"
             
-            # محاولة جلب الرابط فقط إذا لم تكن هناك أخطاء قاتلة
-            echo "Attempting to extract URL..."
+            echo "--- 4. Extracting Public URL ---"
             PUBLIC_URL=$(curl -s http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
             
             if [ "$PUBLIC_URL" == "null" ] || [ -z "$PUBLIC_URL" ]; then
-              echo "❌ FAILED: Could not get public URL. See logs above."
-              echo "Common fix: Verify your account on dashboard.ngrok.com/billing/subscription"
+              echo "❌ ERROR: Could not fetch Ngrok URL."
+              echo "Please check the logs above. Likely causes:"
+              echo "1. Invalid Token."
+              echo "2. Unverified Account (Credit Card/Phone needed for TCP)."
             else
-              echo "✅ SUCCESS!"
-              echo "=========================================="
-              echo "Run this command on your PC:"
+              echo "✅ CONNECTION SUCCESSFUL!"
+              echo "========================================================"
+              echo "Run this command on your PC to connect:"
+              echo ""
               echo "adb connect $(echo $PUBLIC_URL | sed 's/tcp:\/\///')"
-              echo "=========================================="
+              echo ""
+              echo "========================================================"
             fi
             
-            # إبقاء الجلسة مفتوحة فقط إذا نجح الاتصال، أو لفترة قصيرة للفحص
-            sleep 600
+            # إبقاء الجلسة مفتوحة لمدة 20 دقيقة
+            echo "Keeping session alive for 20 minutes..."
+            sleep 1200
